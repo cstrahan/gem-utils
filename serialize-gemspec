@@ -6,7 +6,6 @@ require 'ostruct'
 
 require 'rubygems'
 require 'rubygems/specification'
-require 'rubygems/package'
 
 if defined?(Encoding.default_internal)
   Encoding.default_internal = Encoding::UTF_8

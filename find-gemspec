@@ -6,7 +6,7 @@ require 'ostruct'
 
 require 'rubygems'
 require 'rubygems/specification'
-require 'rubygems/package'
+require 'rubygems/version'
 
 default_glob = "{,*,*/*}.gemspec"
 
