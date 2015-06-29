@@ -1,0 +1,123 @@
+#!/usr/bin/env ruby
+
+require 'optparse'
+require 'stringio'
+require 'ostruct'
+
+require 'rubygems'
+require 'rubygems/specification'
+require 'rubygems/package'
+
+if defined?(Encoding.default_internal)
+  Encoding.default_internal = Encoding::UTF_8
+  Encoding.default_external = Encoding::UTF_8
+end
+
+options = OpenStruct.new
+options.stdin = true
+options.stdout = true
+options.dir = File.expand_path(".")
+options.in_format = :auto
+options.out_format = :auto
+
+opts = OptionParser.new do |opts|
+  opts.banner = "Usage: serialize-gemspec [options]"
+  opts.separator ""
+  opts.separator "Options:"
+  opts.on("--dir PATH",
+          "The directory to evaluate the gemspec in") do |path|
+    options.dir = File.expand_path(path)
+  end
+  opts.on("--in-format FORMAT", [:rb, :yaml, :auto],
+          "The format of the gemspec to read in (rb|yaml|auto) (default: auto)") do |format|
+    options.in_format = format
+  end
+  opts.on("--out-format FORMAT", [:rb, :yaml, :auto],
+          "The format of the gemspec to write out (rb|yaml|auto) (default: auto)") do |format|
+    options.out_format = format
+  end
+  opts.on("--stdin",
+          "Read the gemspec from stdin (default)") do
+    options.stdin = true
+    options.in = nil
+  end
+  opts.on("--in PATH",
+          "The path to the gemspec to read in") do |path|
+    options.in = File.expand_path(path)
+    options.stdin = nil
+  end
+  opts.on("--stdout",
+          "Write the serialized gemspec to stdout (default)") do
+    options.stdout = true
+    options.out = nil
+  end
+  opts.on("--out PATH",
+          "The path to the gemspec to write out") do |path|
+    options.out = File.expand_path(path)
+    options.stdout = nil
+  end
+  opts.on_tail("-h", "--help", "Show this message") do
+    puts opts
+    exit
+  end
+end
+opts.parse!(ARGV)
+
+gemspec_content =
+  if options.stdin
+    STDIN.read
+  else
+    if defined? Encoding
+      File.read options.gemspec, :mode => 'r:UTF-8:-'
+    else
+      File.read options.gemspec
+    end
+  end
+
+if options.in_format == :auto
+  if gemspec_content[0..2] == "---" # YAML header
+    options.in_format = :yaml
+  else
+    options.in_format = :rb
+  end
+end
+if options.out_format == :auto
+  options.out_format = options.in_format
+end
+
+Dir.chdir(options.dir)
+
+spec =
+  if options.in_format == :yaml
+    Gem::Specification.from_yaml(gemspec_content)
+  elsif options.in_format == :rb && options.in
+    Gem::Specification.load(options.in)
+  elsif options.in_format == :rb
+    begin
+      # we can't use Gem::Specification.load because it only accepts a
+      # file path.
+      _spec = eval gemspec_content
+      if !(Gem::Specification === spec)
+        warn "stdin isn't a Gem::Specification (#{_spec.class} instead)."
+      end
+      _spec
+    rescue SignalException, SystemExit
+      raise
+    rescue SyntaxError, Exception => e
+      warn "Invalid gemspec in [#{file}]: #{e}"
+      exit 1
+    end
+  end
+
+serialized =
+  if options.out_format == :rb
+    spec.to_ruby
+  else
+    spec.to_yaml
+  end
+
+if options.stdout
+  STDOUT.write(serialized)
+else
+  File.open(options.out, 'wb') {|file| file.write(serialized) }
+end

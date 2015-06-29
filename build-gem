@@ -1,0 +1,147 @@
+#!/usr/bin/env ruby
+
+require 'optparse'
+require 'stringio'
+require 'ostruct'
+
+require 'rubygems'
+require 'rubygems/specification'
+require 'rubygems/package'
+
+if defined?(Encoding.default_internal)
+  Encoding.default_internal = Encoding::UTF_8
+  Encoding.default_external = Encoding::UTF_8
+end
+
+options = OpenStruct.new
+options.validate = true
+options.out = File.expand_path(".")
+options.dir = File.expand_path(".")
+options.format = :auto
+
+opts = OptionParser.new do |opts|
+  opts.banner = "Usage: gem-builder [options]"
+  opts.separator ""
+  opts.separator "Options:"
+  opts.on("--dir PATH",
+          "The directory to build in") do |path|
+    options.dir = File.expand_path(path)
+  end
+  opts.on("--stdin",
+          "Read the gemspec from stdin (default)") do
+    options.stdin = true
+    options.rel_gemspec = nil
+    options.gemspec = nil
+  end
+  opts.on("--gemspec PATH",
+          "The path to the gemspec") do |path|
+    options.rel_gemspec = path
+    options.gemspec = File.expand_path(path)
+    options.stdin = nil
+  end
+  opts.on("--format FORMAT", [:rb, :yaml, :auto],
+          "The format of the gemspec (rb|yaml|auto) (default: auto)") do |format|
+    options.format = format
+  end
+  opts.on("--stdout",
+          "The path to the gemspec") do
+    options.stdout = true
+    options.rel_out = nil
+    options.out = nil
+  end
+  opts.on("--out PATH",
+          "The path to write the gem package (default: ./)") do |path|
+    options.rel_out = path
+    options.out = File.expand_path(path)
+    options.stdout = nil
+  end
+  opts.on("--validate",
+          "Validate the gem package (default)") do
+    options.validate = true
+  end
+  opts.on("--no-validate",
+          "Do not validate the gem package") do
+    options.validate = false
+  end
+  opts.on_tail("-h", "--help", "Show this message") do
+    puts opts
+    exit
+  end
+end
+opts.parse!(ARGV)
+
+gemspec_content =
+  if options.stdin
+    STDIN.read
+  else
+    if defined? Encoding
+      File.read options.gemspec, :mode => 'r:UTF-8:-'
+    else
+      File.read options.gemspec
+    end
+  end
+
+if options.format == :auto
+  if gemspec_content[0..2] == "---" # YAML header
+    options.format = :yaml
+  else
+    options.format = :rb
+  end
+end
+
+Dir.chdir(options.dir)
+
+spec =
+  if options.format == :yaml
+    Gem::Specification.from_yaml(gemspec_content)
+  elsif options.format == :rb && options.gemspec
+    Gem::Specification.load(options.gemspec)
+  elsif options.format == :rb
+    begin
+      # we can't use Gem::Specification.load because it only accepts a
+      # file path.
+      _spec = eval gemspec_content
+      if !(Gem::Specification === spec)
+        warn "stdin isn't a Gem::Specification (#{_spec.class} instead)."
+      end
+      _spec
+    rescue SignalException, SystemExit
+      raise
+    rescue SyntaxError, Exception => e
+      warn "Invalid gemspec in [#{file}]: #{e}"
+      exit 1
+    end
+  end
+
+rel_target = nil
+target = nil
+if options.out && File.directory?(options.out)
+  rel_target = File.join(options.rel_out, spec.file_name)
+  target = File.join(options.out, spec.file_name)
+end
+
+gem =
+  if options.stdout
+    StringIO.new
+  else
+    target
+  end
+
+pkg = Gem::Package.new(gem)
+
+# don't print stuff to stdout.
+orig_stdout = $stdout.clone
+begin
+  $stdout.reopen(File.new('/dev/null', 'w'))
+rescue Exception
+  $stdout.reopen($stderr)
+end
+
+pkg.build(!options.validate)
+
+# either print the package, or print the path to it.
+if options.stdout
+  orig_stdout.write(gem.string)
+else
+  orig_stdout.puts(File.join(rel_target))
+end

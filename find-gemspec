@@ -1,0 +1,99 @@
+#!/usr/bin/env ruby
+
+require 'optparse'
+require 'stringio'
+require 'ostruct'
+
+require 'rubygems'
+require 'rubygems/specification'
+require 'rubygems/package'
+
+default_glob = "{,*,*/*}.gemspec"
+
+if defined?(Encoding.default_internal)
+  Encoding.default_internal = Encoding::UTF_8
+  Encoding.default_external = Encoding::UTF_8
+end
+
+options = OpenStruct.new
+options.name = nil
+options.n = nil
+options.version = nil
+options.platform = nil
+options.glob = default_glob
+
+opts = OptionParser.new do |opts|
+  opts.banner = "Usage: find-gemspec [options]"
+  opts.separator ""
+  opts.separator "Options:"
+  opts.on("--glob PATTERN",
+          "The glob pattern to use (default: #{default_glob})") do |path|
+    options.dir = File.expand_path(path)
+  end
+  opts.on("--name NAME",
+          "Filter by name") do |name|
+    options.dir = File.expand_path(path)
+  end
+  opts.on("--version VERSION",
+          "Filter by version") do |version|
+    options.dir = File.expand_path(path)
+  end
+  opts.on("--platform PLATFORM",
+          "Filter by platform") do |platform|
+    options.dir = File.expand_path(path)
+  end
+  opts.on("-n", "--matches", OptionParser::DecimalInteger, "Print the first K matches") do |k|
+    options.n = k
+  end
+  opts.on_tail("-h", "--help", "Show this message") do
+    puts opts
+    exit
+  end
+end
+opts.parse!(ARGV)
+
+requirement = nil
+if options.version
+  requirement = Gem::Version::Requirement.parse(options.version)
+end
+
+# load ruby/yaml formatted specs, ignoring those that fail to load
+load_spec = Proc.new do |path|
+  contents = File.read(path)
+  Dir.chdir(FIle.dirname(path)) do
+    begin
+      if contents[0..2] == "---" # YAML header
+        Gem::Specification.from_yaml(contents)
+      else
+        Gem::Specification.load(path)
+      end
+    rescue Exception
+      nil
+    end
+  end
+end
+
+# breadth first search
+paths = Dir[options.glob].uniq.sort_by { |p| p.split(File::SEPARATOR).size }
+found = 0
+matches = paths.select do |path|
+  next unless (options.n.nil? || found < options.n)
+
+  spec = load_spec.call(path)
+  next unless spec
+
+  if options.name
+    next unless spec.name == options.name
+  end
+  if requirement
+    next unless requirement.satisfied_by?(spec.version)
+  end
+  if options.platform
+    next unless spec.platform == options.platform
+  end
+
+  found += 1
+  true
+end
+
+STDOUT.puts(matches)
