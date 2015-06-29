@@ -96,4 +96,4 @@ matches = paths.select do |path|
   true
 end
 
-STDOUT.puts(matches)
+puts(matches)

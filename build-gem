@@ -20,7 +20,7 @@ options.dir = File.expand_path(".")
 options.format = :auto
 
 opts = OptionParser.new do |opts|
-  opts.banner = "Usage: gem-builder [options]"
+  opts.banner = "Usage: build-gem [options]"
   opts.separator ""
   opts.separator "Options:"
   opts.on("--dir PATH",
@@ -143,5 +143,5 @@ pkg.build(!options.validate)
 if options.stdout
   orig_stdout.write(gem.string)
 else
-  orig_stdout.puts(File.join(rel_target))
+  orig_stdout.puts(rel_target)
 end

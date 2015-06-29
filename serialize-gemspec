@@ -117,7 +117,7 @@ serialized =
   end
 
 if options.stdout
-  STDOUT.write(serialized)
+  print serialized
 else
   File.open(options.out, 'wb') {|file| file.write(serialized) }
 end
